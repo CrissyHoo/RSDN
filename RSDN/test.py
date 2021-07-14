@@ -1,43 +1,21 @@
 from __future__ import print_function
-import argparse
-from math import log10
 import os
 import torch
-import torch.nn as nn
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from data import get_test_set #, get_eval_set
-import time
 import torch.backends.cudnn as cudnn
 import cv2
 import math
 import sys
-import datetime
 from utils import Logger
 import numpy as np
-import torchvision.utils as vutils
-from arch import RSDN9_128
-from tensorboardX import SummaryWriter
-import time
-from torch.nn import functional as F
+from model.rsdn import RSDN9_128
+#from tensorboardX import SummaryWriter
+from option import opt,systime,gpus_list
 
-parser = argparse.ArgumentParser(description='PyTorch RSDN Example')
-parser.add_argument('--scale', type=int, default=4, help="super resolution upscale factor")
-parser.add_argument('--testbatchsize', type=int, default=1, help='testing batch size')
-parser.add_argument('--threads', type=int, default=32, help='number of threads for data loader to use')
-parser.add_argument('--seed', type=int, default=0, help='random seed to use. Default=123')
-parser.add_argument('--gpus', default=1, type=int, help='number of gpu')
-parser.add_argument('--cuda',default=True, type=bool)
-parser.add_argument('--test_dir',type=str,default='/home/ma-user/work/data/Vid4')
-parser.add_argument('--file_test_list',type=str, default ='',help='where record all of image name in dataset.')
-parser.add_argument('--save_test_log', type=str,default='./log/test')
-parser.add_argument('--pretrain', type=str, default='RSDN.pth')
-parser.add_argument('--image_out', type=str, default='./out/')
-opt = parser.parse_args()
-gpus_list = range(opt.gpus)
-systime = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M')
-print(opt)
-def main():
+
+def main1():
     #writer = SummaryWriter()
     sys.stdout = Logger(os.path.join(opt.save_test_log,'test_'+systime+'.txt'))
     if not torch.cuda.is_available():
@@ -68,7 +46,7 @@ def main():
     count = 0
     out = []
     test_list = ['foliage_r.txt','walk_r.txt','city_r.txt','calendar_r.txt']
-    for test_name in test_list:
+    for test_name in test_list:#/home/ma-user/work/data/Vid4/4/foliage_r
         test_set = get_test_set(opt.test_dir, opt.scale, test_name.split('.')[0])
         test_loader = DataLoader(dataset=test_set, num_workers=opt.threads, batch_size=opt.testbatchsize, shuffle=False, pin_memory=pin_memory, drop_last=False)
         print('===> DataLoading Finished')
@@ -110,6 +88,7 @@ def test(test_loader, filter_net, test_name, out):
         for i in range(L):
             save_img(prediction[i], test_name, i, False)
             # test_Y______________________
+            print("ycbcrshape",prediction[i].shape)
             prediction_Y = bgr2ycbcr(prediction[i])
             target_Y = bgr2ycbcr(target[i])
             prediction_Y = prediction_Y * 255
@@ -227,5 +206,4 @@ def calculate_ssim(img1, img2):
 
 
 
-if __name__=='__main__':
-    main()
+
