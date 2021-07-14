@@ -12,12 +12,12 @@ def load_img(image_path, scale, L, image_pad):
     HR = []
     for img_num in range(L):
         index = int(image_path[char_len-7:char_len-4]) + img_num
-        image = image_path[0:char_len-7]+'{0:03d}'.format(index)+'.png'
+        image = image_path[0:char_len-7]+'{0:03d}'.format(index-1)+'.png'#这个需要根据数据的文件名格式进行修改
         GT_temp = modcrop(Image.open(image).convert('RGB'), scale)
         HR.append(GT_temp)
     return HR, len(HR)
 
-def modcrop(img,scale):
+def modcrop(img,scale):#将图片裁剪到可以被scale整除的样子
     (iw, ih) = img.size
     ih = ih - (ih % scale)
     iw = iw - (iw % scale)
@@ -27,10 +27,12 @@ def modcrop(img,scale):
 class DataloadFromFolderTest(data.Dataset): # load test dataset
     def __init__(self, image_dir, scale, test_name, transform):
         super(DataloadFromFolderTest, self).__init__()
-        alist = [line.rstrip() for line in open(os.path.join(image_dir,test_name+'.txt'))] 
-        self.image_filenames = [os.path.join(image_dir,x) for x in alist] 
-        L = os.listdir(os.path.join(image_dir, test_name.split('_')[0]))
+        alist = [line.rstrip() for line in open(os.path.join("./test_list/vid4",test_name+'.txt'))]
+        self.image_filenames = [os.path.join(image_dir,x) for x in alist]
+        #print(self.image_filenames)
+        L = os.listdir(os.path.join(image_dir, test_name.split('_')[0],"original"))
         self.L = len(L)
+        print(self.L)
         self.scale = scale
         self.transform = transform # To_tensor
     def __getitem__(self, index):
