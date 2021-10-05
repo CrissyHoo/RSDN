@@ -1,10 +1,12 @@
 # Gaussian kernel for downsampling
+import os.path
+import cv2
 import scipy.ndimage.filters as fi
 import numpy as np
 import torch.nn.functional as F
 import torch 
 
-def gaussian_downsample(x, scale=4):
+def gaussian_downsample(x, scale=4,name=0):
     """Downsamping with Gaussian kernel used in the DUF official code
     Args:
         x (Tensor, [C, T, H, W]): frames to be downsampled.
@@ -49,6 +51,8 @@ def gaussian_downsample(x, scale=4):
     # if downsample to 28 on training time, use the below code.
     #x = x[:,:,scale:-scale,scale:-scale]
     x = x.view(C, T, x.size(2), x.size(3))
+    #print(type(x))
+    #cv2.imwrite(os.path.join("./down/{}.png".format(name)), x.numpy().astype(np.uint8), [cv2.IMWRITE_PNG_COMPRESSION, 0])
     return x
 
 

@@ -3,9 +3,19 @@ import os
 import sys
 import errno
 import shutil
+import cv2
+import math
+import sys
+import datetime
+import numpy as np
+import matplotlib.pyplot as plt
+import torchvision.utils as vutils
+from arch import RSDN9_128
 import json
 import os.path as osp
 import torch
+from PIL import Image, ImageOps
+from option import *
 import warnings
 import torch.nn as nn
 import torch.nn.init as init
@@ -146,3 +156,130 @@ def initialize_weights(net_l, scale=0.1):
             elif isinstance(m, nn.BatchNorm3d):
                 init.constant_(m.weight, 1)
                 init.constant_(m.bias.data, 0.0)
+
+def save_img(prediction,test_name,image_num, att):
+    #print("predictionimg",prediction)
+    if att == True:
+        save_dir = os.path.join(opt.image_out, systime)
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+        image_dir = os.path.join(save_dir, '{}_{:03}'.format(test_name, image_num+1) + '.png')
+        cv2.imwrite(image_dir, prediction, [cv2.IMWRITE_PNG_COMPRESSION, 0])
+    else:
+        save_dir = os.path.join(opt.image_out, systime)
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+        image_dir = os.path.join(save_dir, '{}_{:03}'.format(test_name, image_num+1) + '.png')
+        image_dirp = os.path.join(save_dir, '{}pil_{:03}'.format(test_name, image_num + 1) + '.png')
+        #print("predictionimg", prediction*255)
+        #Image.fromarray(np.uint8(prediction)*255).convert('RGB').save(image_dirp)#负片
+        cv2.imwrite(image_dir, prediction*255, [cv2.IMWRITE_PNG_COMPRESSION, 0])
+def bgr2ycbcr(img, only_y=True):
+    '''same as matlab rgb2ycbcr
+    only_y: only return Y channel
+    Input:
+        uint8, [0, 255]
+        float, [0, 1]
+    Output:
+        type is same as input
+        unit8, [0, 255]
+        float, [0, 1]
+    '''
+    in_img_type = img.dtype
+    img.astype(np.float32)
+    if in_img_type != np.uint8:
+        img *= 255.
+    # convert
+    if only_y:
+        rlt = np.dot(img, [24.966, 128.553, 65.481]) / 255.0 + 16.0
+    else:
+        rlt = np.matmul(img, [[24.966, 112.0, -18.214], [128.553, -74.203, -93.786],
+                              [65.481, -37.797, 112.0]]) / 255.0 + [16, 128, 128]
+    if in_img_type == np.uint8:
+        rlt = rlt.round()
+    else:
+        rlt /= 255.
+    return rlt.astype(in_img_type)
+
+def crop_border_Y(prediction, shave_border=0):
+    prediction = prediction[shave_border:-shave_border, shave_border:-shave_border]
+    return prediction
+
+def crop_border_RGB(target, shave_border=0):
+    target = target[:,shave_border:-shave_border, shave_border:-shave_border,:]
+    return target
+
+def calculate_psnr(prediction, target):
+    # prediction and target have range [0, 255]
+    img1 = prediction.astype(np.float64)
+    img2 = target.astype(np.float64)
+    mse = np.mean((img1 - img2)**2)
+    if mse == 0:
+        return float('inf')
+    return 20 * math.log10(255.0 / math.sqrt(mse))
+
+def ssim(prediction, target):
+    C1 = (0.01 * 255)**2
+    C2 = (0.03 * 255)**2
+    img1 = prediction.astype(np.float64)
+    img2 = target.astype(np.float64)
+    kernel = cv2.getGaussianKernel(11, 1.5)
+    window = np.outer(kernel, kernel.transpose())
+    mu1 = cv2.filter2D(img1, -1, window)[5:-5, 5:-5]  # valid
+    mu2 = cv2.filter2D(img2, -1, window)[5:-5, 5:-5]
+    mu1_sq = mu1**2
+    mu2_sq = mu2**2
+    mu1_mu2 = mu1 * mu2
+    sigma1_sq = cv2.filter2D(img1**2, -1, window)[5:-5, 5:-5] - mu1_sq
+    sigma2_sq = cv2.filter2D(img2**2, -1, window)[5:-5, 5:-5] - mu2_sq
+    sigma12 = cv2.filter2D(img1 * img2, -1, window)[5:-5, 5:-5] - mu1_mu2
+    ssim_map = ((2 * mu1_mu2 + C1) * (2 * sigma12 + C2)) / ((mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2))
+    return ssim_map.mean()
+
+def calculate_ssim(img1, img2):
+    '''
+    calculate SSIM
+    the same outputs as MATLAB's
+    img1, img2: [0, 255]
+    '''
+    if not img1.shape == img2.shape:
+        raise ValueError('Input images must have the same dimensions.')
+    if img1.ndim == 2:
+        return ssim(img1, img2)
+    elif img1.ndim == 3:
+        if img1.shape[2] == 3:
+            ssims = []
+            for i in range(3):
+                ssims.append(ssim(img1, img2))
+            return np.array(ssims).mean()
+        elif img1.shape[2] == 1:
+            return ssim(np.squeeze(img1), np.squeeze(img2))
+    else:
+        raise ValueError('Wrong input image dimensions.')
+
+def modcrop(img,scale):
+    (iw, ih) = img.size
+    ih = ih - (ih % scale)
+    iw = iw - (iw % scale)
+    img = img.crop((0,0,iw,ih))
+    return img
+
+def plot_graph(name,data):
+    axis=np.linspace(1,opt.epoch,opt.epoch)
+    fig=plt.figure()
+    plt.title("{} graph".format(name))
+    plt.plot(axis,data,label="{} graph".format(name))
+    plt.legend()
+    plt.xlabel('Epochs')
+    plt.ylabel(name)
+    plt.grid(True)
+    plt.savefig(os.path.join(opt.image_out, '{}.pdf'.format(name)))
+    plt.close(fig)
+
+def save(model,apath,filename=''):
+    filename='model_{}'.format(filename)
+    path=os.path.join(apath, '{}best.pth'.format(filename))
+    #如果文件不存在，创建文件
+    if not os.path.exists(path):
+        os.system(r"touch {}".format(path))
+    torch.save(model.module.state_dict(),path)

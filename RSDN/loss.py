@@ -4,8 +4,8 @@ class L1_Charbonnier_loss(torch.nn.Module):
     """L1 Charbonnierloss."""
     def __init__(self):
         super(L1_Charbonnier_loss, self).__init__()
-        self.device=torch.device('cuda')
-        self.eps = torch.Tensor([1e-6]).float().to(self.device) #eps的设置还有点疑问
+
+        self.eps = torch.Tensor([1e-6]).float().cuda(non_blocking=True)
 
 
     def forward(self, X, Y):
